@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>preview</LangVersion>
+    <UserSecretsId>incident-triage-agent-service</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Semantic Kernel core + Ollama connector -->
+    <PackageReference Include="Microsoft.SemanticKernel" Version="1.33.0" />
+    <PackageReference Include="Microsoft.SemanticKernel.Connectors.Ollama" Version="1.33.0-alpha" />
+    <!-- MCP C# SDK — client-side for importing tools into SK -->
+    <PackageReference Include="ModelContextProtocol" Version="0.2.0-preview.3" />
+    <!-- Aspire service discovery -->
+    <PackageReference Include="Microsoft.Extensions.ServiceDiscovery" Version="9.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\IncidentTriageAgent.ServiceDefaults\IncidentTriageAgent.ServiceDefaults.csproj" />
+  </ItemGroup>
+
+</Project>
