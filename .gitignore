@@ -15,3 +15,4 @@
 /DotNetAspireTriageAgent.Evals/bin/Release/net10.0
 /DotNetAspireTriageAgent.McpToolServer/bin/Release/net10.0
 /DotNetAspireTriageAgent.ServiceDefaults/bin/Release/net10.0
+/DotNetAspireTriageAgent.AppHost/appsettings.json
