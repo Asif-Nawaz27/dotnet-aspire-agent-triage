@@ -11,9 +11,9 @@
   <ItemGroup>
     <!-- MCP C# SDK 1.0 -->
     <PackageReference Include="ModelContextProtocol.AspNetCore" Version="0.2.0-preview.3" />
-    <!-- Microsoft.Extensions.AI with Ollama bridge -->
+    <!-- Microsoft.Extensions.AI with OpenAI-compatible bridge (Groq + Nomic AI) -->
     <PackageReference Include="Microsoft.Extensions.AI" Version="9.7.0-preview.1.25356.2" />
-    <PackageReference Include="Microsoft.Extensions.AI.Ollama" Version="9.7.0-preview.1.25356.2" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="9.7.0-preview.1.25356.2" />
     <!-- Qdrant .NET SDK -->
     <PackageReference Include="Qdrant.Client" Version="1.12.0" />
     <!-- Aspire service defaults + service discovery -->
