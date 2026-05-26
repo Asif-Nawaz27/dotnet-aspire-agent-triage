@@ -5,21 +5,23 @@ using System.Text.Json;
 using DotNetAspireTriageAgent.AgentService.Filters;
 using DotNetAspireTriageAgent.AgentService.Models;
 using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.Connectors.OpenAI;
+using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
 
 namespace DotNetAspireTriageAgent.AgentService.Agents;
 
 /// <summary>
 /// Orchestrates the five-step incident triage pipeline:
 /// classify → enrich → remediate → escalate → audit.
+/// MCP tools are called directly via McpClient; SK is used for LLM reasoning only.
 /// </summary>
 public sealed class DotNetAspireTriageAgentService(
     Kernel kernel,
+    McpClient mcpClient,
     InjectionDetectionContext detectionContext,
     ILogger<DotNetAspireTriageAgentService> logger)
 {
     private static readonly ActivitySource ActivitySource = new("DotNetAspireTriageAgent.AgentService");
-
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     // C# 14: field keyword — removes explicit backing field for ServiceName
@@ -30,8 +32,8 @@ public sealed class DotNetAspireTriageAgentService(
     }
 
     /// <summary>
-    /// Runs the full triage pipeline for the given alert payload and returns
-    /// a <see cref="TriageResult"/> containing classification, remediation, escalation, and audit data.
+    /// Runs the full triage pipeline for the given alert payload and returns a
+    /// <see cref="TriageResult"/> with classification, remediation, escalation, and audit.
     /// </summary>
     public async Task<TriageResult> TriageAsync(AlertPayload payload, CancellationToken cancellationToken = default)
     {
@@ -45,16 +47,18 @@ public sealed class DotNetAspireTriageAgentService(
         // ── Step 2: Classify severity ─────────────────────────────────────────
         var classification = await ClassifyAsync(payload, cancellationToken);
 
-        // ── Step 3: Enrich with runbook context ───────────────────────────────
+        // ── Step 3: Enrich with runbook context (Critical/High only) ──────────
         RunbookExcerpt[] runbooks = [];
         if (classification.Severity is "Critical" or "High")
         {
             runbooks = await LookupRunbooksAsync(classification.Category, cancellationToken);
         }
 
-        // ── Step 4: Propose remediation + escalate ────────────────────────────
-        var (proposal, escalation) = await RemediateAndEscalateAsync(
-            payload, classification, runbooks, cancellationToken);
+        // ── Step 4a: Propose remediation via LLM ─────────────────────────────
+        var proposal = await ProposeRemediationAsync(payload, classification, runbooks, cancellationToken);
+
+        // ── Step 4b: Escalate via MCP tool ────────────────────────────────────
+        var escalation = await EscalateAsync(payload, classification, cancellationToken);
 
         // ── Step 5: Write audit record ────────────────────────────────────────
         sw.Stop();
@@ -73,29 +77,18 @@ public sealed class DotNetAspireTriageAgentService(
             detectionContext.InjectionDetected);
     }
 
-    // ── Private step methods ───────────────────────────────────────────────────
+    // ── Private step implementations ──────────────────────────────────────────
 
     private async Task<AlertClassification> ClassifyAsync(AlertPayload payload, CancellationToken ct)
     {
         using var activity = ActivitySource.StartActivity("triage.classify", ActivityKind.Internal);
 
-        var args = new KernelArguments(new PromptExecutionSettings
-        {
-            FunctionChoiceBehavior = FunctionChoiceBehavior.Auto()
-        }) { ["alertPayload"] = payload.Body };
+        var toolResult = await CallMcpToolAsync("ClassifyAlert",
+            new Dictionary<string, object?> { ["alertPayload"] = payload.Body },
+            ct);
 
-        var result = await kernel.InvokePromptAsync(
-            BuildPrompt(
-                "You are an SRE triage agent. Classify the following alert by calling the ClassifyAlert tool.",
-                $"Alert ID: {payload.Id}",
-                $"Source: {payload.Source}",
-                $"Body: {{{{$alertPayload}}}}"),
-            args, cancellationToken: ct);
-
-        var json = result.ToString();
-        activity?.SetTag("classify.raw_response_length", json.Length);
-
-        return ParseJson<AlertClassification>(json)
+        activity?.SetTag("classify.response_length", toolResult.Length);
+        return ParseJson<AlertClassification>(toolResult)
             ?? new AlertClassification("Low", "unknown", 0.5);
     }
 
@@ -104,18 +97,16 @@ public sealed class DotNetAspireTriageAgentService(
         using var activity = ActivitySource.StartActivity("triage.enrich", ActivityKind.Internal);
         activity?.SetTag("enrich.category", category);
 
-        var args = new KernelArguments { ["alertCategory"] = category };
+        var toolResult = await CallMcpToolAsync("LookupRunbook",
+            new Dictionary<string, object?> { ["alertCategory"] = category },
+            ct);
 
-        var result = await kernel.InvokePromptAsync(
-            "Look up relevant runbooks for the following alert category by calling the LookupRunbook tool: {{$alertCategory}}",
-            args, cancellationToken: ct);
-
-        var excerpts = ParseJson<RunbookExcerpt[]>(result.ToString());
+        var excerpts = ParseJson<RunbookExcerpt[]>(toolResult);
         activity?.SetTag("enrich.runbooks_found", excerpts?.Length ?? 0);
         return excerpts ?? [];
     }
 
-    private async Task<(RemediationProposal Proposal, EscalationResult Escalation)> RemediateAndEscalateAsync(
+    private async Task<RemediationProposal> ProposeRemediationAsync(
         AlertPayload payload,
         AlertClassification classification,
         RunbookExcerpt[] runbooks,
@@ -129,41 +120,42 @@ public sealed class DotNetAspireTriageAgentService(
 
         // C# 14: params ReadOnlySpan<string> assembles the prompt
         var prompt = BuildPrompt(
-            "You are an SRE triage agent. Using the tools available, propose a remediation plan and escalate if needed.",
-            $"Alert: {payload.Body}",
+            "You are an SRE triage agent. Propose a structured remediation plan as JSON.",
+            $"Alert body: {payload.Body}",
             $"Severity: {classification.Severity} | Category: {classification.Category} | Confidence: {classification.Confidence:F2}",
             $"Runbook context:\n{runbookContext}",
-            "Call the EscalateIncident tool, then return a JSON RemediationProposal: {actionSteps: string[], estimatedImpact: string, confidence: number}");
+            "Respond ONLY with valid JSON matching: {\"actionSteps\":[\"...\"],\"estimatedImpact\":\"...\",\"confidence\":0.0}");
 
-        var args = new KernelArguments(new PromptExecutionSettings
-        {
-            FunctionChoiceBehavior = FunctionChoiceBehavior.Auto()
-        })
-        {
-            ["incidentSummary"] = $"[{classification.Severity}] {payload.Source}: {payload.Body[..Math.Min(120, payload.Body.Length)]}",
-            ["severity"] = classification.Severity
-        };
-
-        var result = await kernel.InvokePromptAsync(prompt, args, cancellationToken: ct);
+        // Use SK for pure LLM reasoning (no function calling required here)
+        var result = await kernel.InvokePromptAsync(prompt, cancellationToken: ct);
         var json = result.ToString();
 
-        if (result.Metadata?.TryGetValue("Usage", out var usageObj) is true && usageObj is { } usage)
-        {
-            // Emit token usage as Activity tags (provider-agnostic best-effort)
-            activity?.SetTag("ai.usage.prompt_tokens", usage.ToString());
-        }
+        activity?.SetTag("remediate.response_length", json.Length);
 
-        var proposal = ParseJson<RemediationProposal>(json)
+        return ParseJson<RemediationProposal>(json)
             ?? new RemediationProposal(["Review alert manually"], "Unknown", 0.3);
+    }
 
-        // The escalation result comes from the EscalateIncident tool call wired via FunctionChoiceBehavior.Auto
-        // Extract it from kernel state or default
-        var escalation = new EscalationResult(
-            classification.Severity is "Critical" or "High",
-            classification.Severity is "Critical" or "High" ? $"INC-{payload.Id[..Math.Min(8, payload.Id.Length)]}" : null);
+    private async Task<EscalationResult> EscalateAsync(
+        AlertPayload payload,
+        AlertClassification classification,
+        CancellationToken ct)
+    {
+        using var activity = ActivitySource.StartActivity("triage.escalate", ActivityKind.Client);
 
-        activity?.SetTag("remediate.action_steps", proposal.ActionSteps.Length);
-        return (proposal, escalation);
+        var summary = $"[{classification.Severity}] {payload.Source}: {payload.Body[..Math.Min(120, payload.Body.Length)]}";
+        var toolResult = await CallMcpToolAsync("EscalateIncident",
+            new Dictionary<string, object?>
+            {
+                ["incidentSummary"] = summary,
+                ["severity"] = classification.Severity
+            },
+            ct);
+
+        var escalation = ParseJson<EscalationResult>(toolResult)
+            ?? new EscalationResult(false, null);
+        activity?.SetTag("escalate.escalated", escalation.Escalated);
+        return escalation;
     }
 
     private async Task WriteAuditAsync(
@@ -178,13 +170,11 @@ public sealed class DotNetAspireTriageAgentService(
         var triageResult = new TriageResult(classification, proposal, escalation, auditEntry);
         var triageJson = JsonSerializer.Serialize(triageResult, JsonOptions);
 
-        var args = new KernelArguments { ["triageResultJson"] = triageJson };
-
         try
         {
-            await kernel.InvokePromptAsync(
-                "Write the following triage result to the audit log by calling the WriteAuditEntry tool: {{$triageResultJson}}",
-                args, cancellationToken: ct);
+            await CallMcpToolAsync("WriteAuditEntry",
+                new Dictionary<string, object?> { ["triageResultJson"] = triageJson },
+                ct);
         }
         catch (Exception ex)
         {
@@ -194,6 +184,49 @@ public sealed class DotNetAspireTriageAgentService(
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
+    /// <summary>Calls an MCP tool by name and returns the text result.</summary>
+    private async Task<string> CallMcpToolAsync(
+        string toolName,
+        Dictionary<string, object?> args,
+        CancellationToken ct)
+    {
+        using var activity = ActivitySource.StartActivity($"mcp.{toolName}", ActivityKind.Client);
+        activity?.SetTag("mcp.tool_name", toolName);
+
+        try
+        {
+            var result = await mcpClient.CallToolAsync(
+                toolName,
+                args.AsReadOnly(),
+                progress: null,
+                options: null,
+                cancellationToken: ct);
+
+            // Extract text from the content blocks (TextContentBlock.Text)
+            var text = string.Concat(
+                result.Content
+                      .OfType<TextContentBlock>()
+                      .Select(b => b.Text));
+
+            // Fallback to structured content JSON if no text blocks
+            // StructuredContent is JsonElement? — use JsonSerializer.Serialize, not ToJsonString()
+            if (string.IsNullOrEmpty(text) && result.StructuredContent is { } sc)
+                text = JsonSerializer.Serialize(sc, JsonOptions);
+
+            return string.IsNullOrEmpty(text) ? "{}" : text;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "MCP tool '{ToolName}' call failed", toolName);
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            return "{}";
+        }
+    }
+
     /// <summary>Assembles context segments into a single prompt string.</summary>
     private static string BuildPrompt(params ReadOnlySpan<string> segments)
     {
@@ -201,9 +234,7 @@ public sealed class DotNetAspireTriageAgentService(
         foreach (var segment in segments)
         {
             if (!string.IsNullOrWhiteSpace(segment))
-            {
                 sb.AppendLine(segment);
-            }
         }
         return sb.ToString().TrimEnd();
     }
@@ -212,18 +243,12 @@ public sealed class DotNetAspireTriageAgentService(
     {
         if (string.IsNullOrWhiteSpace(json)) return default;
 
-        // Find the first JSON object or array in the response (LLMs sometimes add prose)
+        // Trim prose wrapper: find the first JSON object or array
         var start = json.IndexOfAny(['{', '[']);
-        var end = json.LastIndexOfAny(['}', ']']);
+        var end   = json.LastIndexOfAny(['}', ']']);
         if (start < 0 || end < 0 || end <= start) return default;
 
-        try
-        {
-            return JsonSerializer.Deserialize<T>(json[start..(end + 1)], JsonOptions);
-        }
-        catch
-        {
-            return default;
-        }
+        try { return JsonSerializer.Deserialize<T>(json[start..(end + 1)], JsonOptions); }
+        catch { return default; }
     }
 }

@@ -2,15 +2,15 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.11.35303.130
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DotNetAspireTriageAgent.AppHost", "IncidentTriageAgent.AppHost\DotNetAspireTriageAgent.AppHost.csproj", "{A1B2C3D4-0001-0001-0001-000000000001}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DotNetAspireTriageAgent.AppHost", "DotNetAspireTriageAgent.AppHost\DotNetAspireTriageAgent.AppHost.csproj", "{A1B2C3D4-0001-0001-0001-000000000001}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DotNetAspireTriageAgent.AgentService", "IncidentTriageAgent.AgentService\DotNetAspireTriageAgent.AgentService.csproj", "{A1B2C3D4-0001-0001-0001-000000000002}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DotNetAspireTriageAgent.AgentService", "DotNetAspireTriageAgent.AgentService\DotNetAspireTriageAgent.AgentService.csproj", "{A1B2C3D4-0001-0001-0001-000000000002}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DotNetAspireTriageAgent.McpToolServer", "IncidentTriageAgent.McpToolServer\DotNetAspireTriageAgent.McpToolServer.csproj", "{A1B2C3D4-0001-0001-0001-000000000003}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DotNetAspireTriageAgent.McpToolServer", "DotNetAspireTriageAgent.McpToolServer\DotNetAspireTriageAgent.McpToolServer.csproj", "{A1B2C3D4-0001-0001-0001-000000000003}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DotNetAspireTriageAgent.Evals", "IncidentTriageAgent.Evals\DotNetAspireTriageAgent.Evals.csproj", "{A1B2C3D4-0001-0001-0001-000000000004}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DotNetAspireTriageAgent.Evals", "DotNetAspireTriageAgent.Evals\DotNetAspireTriageAgent.Evals.csproj", "{A1B2C3D4-0001-0001-0001-000000000004}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DotNetAspireTriageAgent.ServiceDefaults", "IncidentTriageAgent.ServiceDefaults\DotNetAspireTriageAgent.ServiceDefaults.csproj", "{A1B2C3D4-0001-0001-0001-000000000005}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DotNetAspireTriageAgent.ServiceDefaults", "DotNetAspireTriageAgent.ServiceDefaults\DotNetAspireTriageAgent.ServiceDefaults.csproj", "{A1B2C3D4-0001-0001-0001-000000000005}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

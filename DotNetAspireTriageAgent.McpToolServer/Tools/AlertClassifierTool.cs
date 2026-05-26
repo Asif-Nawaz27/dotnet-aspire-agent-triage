@@ -2,7 +2,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Text.Json;
-using System.Text.Json.Schema;
 using Microsoft.Extensions.AI;
 using ModelContextProtocol.Server;
 
@@ -16,15 +15,25 @@ internal sealed record AlertClassificationDto(string Severity, string Category, 
 public sealed class AlertClassifierTool(IChatClient chatClient, ILogger<AlertClassifierTool> logger)
 {
     private static readonly ActivitySource ActivitySource = new("DotNetAspireTriageAgent.McpToolServer");
-
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    private static readonly JsonElement ClassificationSchema =
-        JsonSerializerOptions.Default.GetJsonSchemaAsNode(typeof(AlertClassificationDto)).Deserialize<JsonElement>();
+    // Microsoft.Extensions.AI 9.7.0: ForJsonSchema only accepts (JsonElement, string, string).
+    // The ForJsonSchema(Type, JsonSerializerOptions, ...) overload does not exist until 10.5.2+.
+    private static readonly JsonElement ClassificationSchema = JsonDocument.Parse("""
+        {
+          "type": "object",
+          "properties": {
+            "severity":   { "type": "string" },
+            "category":   { "type": "string" },
+            "confidence": { "type": "number" }
+          },
+          "required": ["severity", "category", "confidence"]
+        }
+        """).RootElement.Clone();
 
     /// <summary>
     /// Classifies a raw alert payload and returns severity, category, and confidence as JSON.
-    /// Uses structured output (ResponseFormat with JSON schema) — no LLM free-text parsing needed.
+    /// Uses structured output (ResponseFormat with JSON schema) — no free-text parsing needed.
     /// </summary>
     [McpServerTool]
     [Description("Classifies a raw alert payload into severity (Critical|High|Medium|Low), category, and confidence score. Returns AlertClassification JSON.")]
@@ -41,24 +50,27 @@ public sealed class AlertClassifierTool(IChatClient chatClient, ILogger<AlertCla
             {
                 new(ChatRole.System,
                     """
-                    You are an SRE alert classifier. Analyse the alert and respond ONLY with valid JSON
-                    matching the schema. Severity must be one of: Critical, High, Medium, Low.
+                    You are an SRE alert classifier. Analyse the alert and respond ONLY with valid JSON.
+                    Severity must be one of: Critical, High, Medium, Low.
                     Category must be a concise noun phrase (e.g. "cpu_spike", "memory_oom", "disk_io").
                     Confidence must be between 0.0 and 1.0.
+                    JSON format: {"severity":"...","category":"...","confidence":0.0}
                     """),
                 new(ChatRole.User, alertPayload)
             };
 
+            // Microsoft.Extensions.AI 9.7: ForJsonSchema(JsonElement schema, string schemaName, string schemaDescription)
             var options = new ChatOptions
             {
                 ResponseFormat = ChatResponseFormat.ForJsonSchema(
                     ClassificationSchema,
-                    schemaName: "AlertClassification",
-                    schemaDescription: "Alert severity classification result")
+                    "AlertClassification",
+                    "Alert severity classification result")
             };
 
-            var response = await chatClient.CompleteAsync(messages, options, cancellationToken);
-            var rawJson = response.Message.Text ?? "{}";
+            // Microsoft.Extensions.AI 9.7: GetResponseAsync replaces CompleteAsync
+            var response = await chatClient.GetResponseAsync(messages, options, cancellationToken);
+            var rawJson = response.Text ?? "{}";
 
             var classification = JsonSerializer.Deserialize<AlertClassificationDto>(rawJson, JsonOptions)
                 ?? new AlertClassificationDto("Low", "unknown", 0.5);

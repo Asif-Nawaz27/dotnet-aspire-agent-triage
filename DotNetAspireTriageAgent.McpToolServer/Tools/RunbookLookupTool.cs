@@ -41,9 +41,11 @@ public sealed class RunbookLookupTool(
 
         try
         {
-            var embedding = await embeddingGenerator.GenerateEmbeddingAsync(alertCategory, cancellationToken: cancellationToken);
-            var queryVector = embedding.Vector.ToArray();
+            // Microsoft.Extensions.AI 9.7: GenerateVectorAsync returns ReadOnlyMemory<float>
+            var queryVector = await embeddingGenerator.GenerateVectorAsync(
+                alertCategory, cancellationToken: cancellationToken);
 
+            // QdrantClient.SearchAsync accepts ReadOnlyMemory<float> directly
             var results = await qdrantClient.SearchAsync(
                 collectionName: CollectionName,
                 vector: queryVector,
@@ -59,9 +61,7 @@ public sealed class RunbookLookupTool(
                 : [new RunbookExcerptDto("General Runbook", "Follow standard incident response procedures.", 0.0)];
 
             activity?.SetTag("runbook.results_count", excerpts.Length);
-
             logger.LogInformation("Runbook lookup for '{Category}' returned {Count} excerpt(s)", alertCategory, excerpts.Length);
-
             return JsonSerializer.Serialize(excerpts, JsonOptions);
         }
         catch (OperationCanceledException)

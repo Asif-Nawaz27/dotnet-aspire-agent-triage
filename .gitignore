@@ -5,3 +5,13 @@
 /.vs
 /*/obj
 /*/bin/Debug/net10.0
+/IncidentTriageAgent.AgentService/bin/Release/net10.0
+/IncidentTriageAgent.AppHost/bin/Release/net10.0
+/IncidentTriageAgent.Evals/bin/Release/net10.0
+/IncidentTriageAgent.McpToolServer/bin/Release/net10.0
+/IncidentTriageAgent.ServiceDefaults/bin/Release/net10.0
+/DotNetAspireTriageAgent.AgentService/bin/Release/net10.0
+/DotNetAspireTriageAgent.AppHost/bin/Release/net10.0
+/DotNetAspireTriageAgent.Evals/bin/Release/net10.0
+/DotNetAspireTriageAgent.McpToolServer/bin/Release/net10.0
+/DotNetAspireTriageAgent.ServiceDefaults/bin/Release/net10.0

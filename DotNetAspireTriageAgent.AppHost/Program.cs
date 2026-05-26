@@ -9,9 +9,9 @@ var qdrant = builder.AddQdrant("vectorstore")
 // Ollama runs locally; the model must be pulled before first use.
 // Run: ollama pull llama3.2 && ollama pull nomic-embed-text
 var ollama = builder.AddOllama("ollama")
-                    .WithLifetime(ContainerLifetime.Persistent)
-                    .AddModel("llama3.2")
-                    .AddModel("nomic-embed-text");
+                    .WithLifetime(ContainerLifetime.Persistent);
+ollama.AddModel("llama3.2");
+ollama.AddModel("nomic-embed-text");
 
 // ── MCP tool server ───────────────────────────────────────────────────────────
 var mcpServer = builder.AddProject<Projects.DotNetAspireTriageAgent_McpToolServer>("mcp-tools")

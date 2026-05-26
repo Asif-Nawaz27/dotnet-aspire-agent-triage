@@ -1,0 +1,15 @@
+[
+  {
+    "Name": "New Profile",
+    "Projects": [
+      {
+        "Path": "IncidentTriageAgent.AppHost\\DotNetAspireTriageAgent.AppHost.csproj",
+        "Action": "Start"
+      },
+      {
+        "Path": "IncidentTriageAgent.Evals\\DotNetAspireTriageAgent.Evals.csproj",
+        "Action": "Start"
+      }
+    ]
+  }
+]

@@ -4,7 +4,6 @@ using DotNetAspireTriageAgent.AgentService.Filters;
 using DotNetAspireTriageAgent.AgentService.Models;
 using Microsoft.SemanticKernel;
 using ModelContextProtocol.Client;
-using ModelContextProtocol.Protocol.Transport;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.AddServiceDefaults();
@@ -16,7 +15,23 @@ var mcpServerUrl   = builder.Configuration["services:mcp-tools:http:0"] ?? "http
 // ── Scoped injection detection context (one per HTTP request) ─────────────────
 builder.Services.AddScoped<InjectionDetectionContext>();
 
-// ── Semantic Kernel — under 30 lines ─────────────────────────────────────────
+// ── MCP client (singleton) — ModelContextProtocol 1.3.0 API ──────────────────
+// HttpClientTransport with StreamableHttp replaces the old SseClientTransport.
+builder.Services.AddSingleton<McpClient>(_ =>
+{
+    var transport = new HttpClientTransport(new HttpClientTransportOptions
+    {
+        Endpoint = new Uri($"{mcpServerUrl}/mcp"),
+        TransportMode = HttpTransportMode.StreamableHttp,
+        Name = "mcp-tools"
+    });
+    return McpClient.CreateAsync(transport, cancellationToken: CancellationToken.None)
+                    .GetAwaiter().GetResult();
+});
+
+// ── Semantic Kernel — under 30 lines ──────────────────────────────────────────
+// SK is used only for LLM reasoning (remediation prompt).
+// MCP tools are invoked directly via McpClient, not via FunctionChoiceBehavior.
 builder.Services.AddScoped<Kernel>(sp =>
 {
     var kernelBuilder = Kernel.CreateBuilder();
@@ -25,28 +40,13 @@ builder.Services.AddScoped<Kernel>(sp =>
         modelId: "llama3.2",
         endpoint: new Uri(ollamaEndpoint));
 
-    // Register the prompt injection filter (scoped — resolves InjectionDetectionContext per request)
+    // PromptInjectionFilter scans every rendered prompt for injection patterns
     kernelBuilder.Services.AddScoped<IPromptRenderFilter>(
         sp2 => new PromptInjectionFilter(
             sp2.GetRequiredService<InjectionDetectionContext>(),
             sp2.GetRequiredService<ILogger<PromptInjectionFilter>>()));
 
-    var kernel = kernelBuilder.Build();
-
-    // Import MCP tool server as a KernelPlugin
-    var mcpClient = McpClientFactory.CreateAsync(
-        new SseClientTransport(new SseClientTransportOptions
-        {
-            Endpoint = new Uri($"{mcpServerUrl}/mcp"),
-            Name = "mcp-tools"
-        })).GetAwaiter().GetResult();
-
-    var mcpTools = mcpClient.ListToolsAsync().GetAwaiter().GetResult();
-    var mcpFunctions = mcpTools.Select(t => t.AsKernelFunction(mcpClient)).ToList();
-    var mcpPlugin = KernelPluginFactory.CreateFromFunctions("McpTools", mcpFunctions);
-    kernel.Plugins.Add(mcpPlugin);
-
-    return kernel;
+    return kernelBuilder.Build();
 });
 
 // ── Agent service (scoped — shares Kernel + InjectionDetectionContext) ────────

@@ -2,7 +2,6 @@
 using Microsoft.Extensions.AI;
 using Qdrant.Client;
 using Qdrant.Client.Grpc;
-using static Qdrant.Client.Grpc.Conditions;
 
 namespace DotNetAspireTriageAgent.McpToolServer;
 
@@ -16,21 +15,16 @@ public sealed class RunbookSeeder(
     [
         ("CPU Spike Runbook", "cpu_spike",
             "1. Identify top CPU consumers via `top -b -n1`. 2. Check for runaway processes. 3. Scale out horizontally if load is legitimate. 4. Review cgroup limits and throttle noisy neighbours."),
-
         ("Memory OOM Runbook", "memory_oom",
-            "1. Capture heap dump before OOM kill: `jmap -dump:live,format=b`. 2. Restart affected pods with memory limit increase. 3. Analyse heap for leaks using Eclipse MAT. 4. Add JVM GC logging: `-Xlog:gc*`."),
-
+            "1. Capture heap dump before OOM kill: `jmap -dump:live,format=b`. 2. Restart affected pods with memory limit increase. 3. Analyse heap for leaks using Eclipse MAT. 4. Add JVM GC logging."),
         ("Disk I/O Degradation Runbook", "disk_io",
             "1. Run `iostat -x 1 5` to identify saturation. 2. Check for large sequential writes from batch jobs. 3. Move hot data to SSD-backed volumes. 4. Enable I/O throttling for non-critical workloads."),
-
         ("Network Packet Loss Runbook", "network_packet_loss",
-            "1. Run `ping -c 100` to quantify loss. 2. Check NIC driver errors via `ethtool -S eth0`. 3. Review MTU settings — jumbo frames can cause fragmentation. 4. Escalate to network team if loss > 5%."),
-
+            "1. Run `ping -c 100` to quantify loss. 2. Check NIC driver errors via `ethtool -S eth0`. 3. Review MTU settings. 4. Escalate to network team if loss > 5%."),
         ("Elevated Error Rate Runbook", "elevated_error_rate",
-            "1. Query Grafana for 5xx rate by endpoint. 2. Correlate with recent deployments in Argo CD. 3. Roll back if error spike matches deploy timestamp. 4. Enable detailed trace sampling for affected endpoints."),
-
+            "1. Query Grafana for 5xx rate by endpoint. 2. Correlate with recent deployments. 3. Roll back if error spike matches deploy timestamp. 4. Enable detailed trace sampling for affected endpoints."),
         ("General Incident Response", "general",
-            "1. Acknowledge alert and create incident ticket. 2. Gather initial facts: what changed, when, who is affected. 3. Communicate status to stakeholders via status page. 4. Begin RCA within 24 h of resolution."),
+            "1. Acknowledge alert and create incident ticket. 2. Gather initial facts: what changed, when, who is affected. 3. Communicate status via status page. 4. Begin RCA within 24 h of resolution."),
     ];
 
     /// <summary>Seeds the runbooks collection in Qdrant if it does not yet exist.</summary>
@@ -47,27 +41,29 @@ public sealed class RunbookSeeder(
 
             logger.LogInformation("Seeding runbook collection…");
 
-            // Use the first entry to determine vector size
-            var sampleEmbedding = await embeddingGenerator.GenerateEmbeddingAsync(
+            // Microsoft.Extensions.AI 9.7: GenerateVectorAsync returns ReadOnlyMemory<float>
+            var sampleVector = await embeddingGenerator.GenerateVectorAsync(
                 RunbookData[0].Category, cancellationToken: cancellationToken);
-            var vectorSize = (ulong)sampleEmbedding.Vector.Length;
+            var vectorSize = (ulong)sampleVector.Length;
 
+            // Qdrant.Client 1.12: CreateCollectionAsync takes VectorParams directly (no VectorsConfig wrapper)
             await qdrantClient.CreateCollectionAsync(
                 Tools.RunbookLookupTool.CollectionName,
-                new VectorsConfig(new VectorParams { Size = vectorSize, Distance = Distance.Cosine }),
+                new VectorParams { Size = vectorSize, Distance = Distance.Cosine },
                 cancellationToken: cancellationToken);
 
             var points = new List<PointStruct>();
             for (var i = 0; i < RunbookData.Length; i++)
             {
                 var (title, category, content) = RunbookData[i];
-                var embedding = await embeddingGenerator.GenerateEmbeddingAsync(
+                var vec = await embeddingGenerator.GenerateVectorAsync(
                     $"{category} {title}", cancellationToken: cancellationToken);
 
+                // Qdrant.Client 1.12: implicit operator float[] → Vectors is available
                 var point = new PointStruct
                 {
                     Id = new PointId { Num = (ulong)(i + 1) },
-                    Vectors = embedding.Vector.ToArray()
+                    Vectors = vec.ToArray()   // float[] implicit → Vectors
                 };
                 point.Payload["title"] = title;
                 point.Payload["category"] = category;
