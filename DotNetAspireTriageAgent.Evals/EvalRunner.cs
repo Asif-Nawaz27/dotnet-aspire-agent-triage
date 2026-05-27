@@ -1,13 +1,19 @@
 // DotNetAspireTriageAgent.Evals/EvalRunner.cs
 // CS8803 rule: top-level executable statements must come BEFORE namespace/type declarations.
 // All record types are declared at the end of this file.
+using Microsoft.Extensions.Configuration;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
 // ── Eval runner (top-level statements) ───────────────────────────────────────
 
-var agentBaseUrl = args.Length > 0 ? args[0] : "http://localhost:5000";
+var config = new ConfigurationBuilder()
+    .SetBasePath(AppContext.BaseDirectory)
+    .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
+    .Build();
+
+var agentBaseUrl = config["Evals:AgentBaseUrl"] ?? "http://localhost:5000";
 var fixturesPath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "golden-alerts.json");
 var jsonOptions  = new JsonSerializerOptions(JsonSerializerDefaults.Web);
 

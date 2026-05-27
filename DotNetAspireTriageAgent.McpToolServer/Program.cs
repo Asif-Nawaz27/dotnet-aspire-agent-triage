@@ -6,13 +6,27 @@ using DotNetAspireTriageAgent.McpToolServer.Tools;
 using Microsoft.Extensions.AI;
 using OpenAI;
 using Qdrant.Client;
+using Serilog;
 using System.ClientModel;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.AddServiceDefaults();
 
-var cfg = builder.Configuration;
+// ── Serilog file logger ───────────────────────────────────────────────────────
+var logPath = Path.Combine(AppContext.BaseDirectory, "DotNetAspireTriageAgent.McpToolServer.log");
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .WriteTo.File(
+        path: logPath,
+        outputTemplate: "[{Timestamp:O}] [{Level:u3}] {Message:lj}{NewLine}{Exception}",
+        rollingInterval: RollingInterval.Day,
+        retainedFileCountLimit: 7,
+        shared: true)
+    .CreateLogger();
 
+builder.Host.UseSerilog();
+
+var cfg = builder.Configuration;
 // ── Groq (injected by AppHost: Groq__ApiKey, Groq__Endpoint, Groq__Model) ─────
 var groqApiKey   = cfg["Groq:ApiKey"]   ?? throw new InvalidOperationException("Groq:ApiKey is missing. Ensure Parameters:GroqApiKey is set in AppHost/appsettings.json.");
 var groqEndpoint = cfg["Groq:Endpoint"] ?? throw new InvalidOperationException("Groq:Endpoint is missing. Ensure Groq:Endpoint is set in AppHost/appsettings.json.");
@@ -25,9 +39,22 @@ var nomicModel    = cfg["Nomic:Model"]    ?? throw new InvalidOperationException
 
 // ── Qdrant (ConnectionStrings:vectorstore injected by Aspire .WithReference(qdrant);
 //           Qdrant:DefaultEndpoint injected by AppHost as Qdrant__DefaultEndpoint)
-var qdrantEndpoint = cfg["ConnectionStrings:vectorstore"]
+// Aspire injects the Qdrant connection string as "Endpoint=http://host:port" — extract the URI.
+static string ExtractQdrantUri(string raw)
+{
+    foreach (var part in raw.Split(';'))
+    {
+        var kv = part.Split('=', 2);
+        if (kv.Length == 2 && kv[0].Trim().Equals("Endpoint", StringComparison.OrdinalIgnoreCase))
+            return kv[1].Trim();
+    }
+    return raw; // already a plain URI
+}
+
+var qdrantRaw = cfg["ConnectionStrings:vectorstore"]
     ?? cfg["Qdrant:DefaultEndpoint"]
     ?? throw new InvalidOperationException("Qdrant endpoint is missing. Ensure Qdrant:DefaultEndpoint is set in AppHost/appsettings.json.");
+var qdrantEndpoint = ExtractQdrantUri(qdrantRaw);
 
 // ── Groq chat client ──────────────────────────────────────────────────────────
 var groqClient = new OpenAIClient(

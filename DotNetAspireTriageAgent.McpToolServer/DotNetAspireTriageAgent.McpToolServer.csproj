@@ -18,6 +18,9 @@
     <PackageReference Include="Qdrant.Client" Version="1.12.0" />
     <!-- Aspire service defaults + service discovery -->
     <PackageReference Include="Microsoft.Extensions.ServiceDiscovery" Version="9.7.0" />
+    <!-- File logging via Serilog -->
+    <PackageReference Include="Serilog.Extensions.Hosting" Version="8.0.0" />
+    <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
   </ItemGroup>
 
   <ItemGroup>

@@ -19,6 +19,7 @@ var groqApiKey   = cfg["Groq:ApiKey"]   ?? throw new InvalidOperationException("
 var groqEndpoint = cfg["Groq:Endpoint"] ?? throw new InvalidOperationException("Groq:Endpoint is missing. Ensure Groq:Endpoint is set in AppHost/appsettings.json.");
 var groqModel    = cfg["Groq:Model"]    ?? throw new InvalidOperationException("Groq:Model is missing. Ensure Groq:Model is set in AppHost/appsettings.json.");
 
+
 // ── MCP Tool Server URL ────────────────────────────────────────────────────────
 // services:mcp-tools:http:0  → injected automatically by Aspire .WithReference(mcpServer)
 // McpClient:DefaultUrl       → injected by AppHost as McpClient__DefaultUrl
@@ -26,8 +27,10 @@ var mcpServerUrl = cfg["services:mcp-tools:http:0"]
     ?? cfg["McpClient:DefaultUrl"]
     ?? throw new InvalidOperationException("MCP server URL is missing. Ensure McpClient:DefaultUrl is set in AppHost/appsettings.json.");
 
+
 // ── Scoped injection detection context (one per HTTP request) ─────────────────
 builder.Services.AddScoped<InjectionDetectionContext>();
+
 
 // ── MCP client (singleton) ────────────────────────────────────────────────────
 builder.Services.AddSingleton<McpClient>(_ =>
@@ -42,6 +45,7 @@ builder.Services.AddSingleton<McpClient>(_ =>
                     .GetAwaiter().GetResult();
 });
 
+
 // ── Semantic Kernel — Groq via OpenAI-compatible connector ───────────────────
 builder.Services.AddScoped<Kernel>(sp =>
 {
@@ -55,13 +59,16 @@ builder.Services.AddScoped<Kernel>(sp =>
         modelId:      groqModel,
         openAIClient: groqClient);
 
-    kernelBuilder.Services.AddScoped<IPromptRenderFilter>(
-        sp2 => new PromptInjectionFilter(
-            sp2.GetRequiredService<InjectionDetectionContext>(),
-            sp2.GetRequiredService<ILogger<PromptInjectionFilter>>()));
+    var kernel = kernelBuilder.Build();
 
-    return kernelBuilder.Build();
+    // Resolve filter from the outer scoped container (which has InjectionDetectionContext)
+    kernel.PromptRenderFilters.Add(new PromptInjectionFilter(
+        sp.GetRequiredService<InjectionDetectionContext>(),
+        sp.GetRequiredService<ILogger<PromptInjectionFilter>>()));
+
+    return kernel;
 });
+
 
 // ── Agent service ─────────────────────────────────────────────────────────────
 builder.Services.AddScoped<DotNetAspireTriageAgentService>();
@@ -79,5 +86,6 @@ app.MapPost("/triage", async (
 })
 .WithName("TriageAlert")
 .WithDescription("Accepts a raw alert payload and runs the five-step triage pipeline");
+
 
 app.Run();

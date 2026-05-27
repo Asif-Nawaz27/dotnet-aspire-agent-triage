@@ -8,7 +8,7 @@ using ModelContextProtocol.Server;
 namespace DotNetAspireTriageAgent.McpToolServer.Tools;
 
 /// <summary>Thread-safe, append-only in-memory audit log singleton shared between tool invocations.</summary>
-public sealed class AuditLog
+public sealed class AuditLog(ILogger<AuditLog> logger)
 {
     // C# 14: field keyword removes the explicit backing field for Count
     public int Count
@@ -19,12 +19,16 @@ public sealed class AuditLog
 
     private readonly ConcurrentQueue<AuditLogEntry> _entries = new();
 
-    /// <summary>Appends a new entry and returns the UTC timestamp.</summary>
+    /// <summary>Appends a new entry, writes it to the log file via ILogger, and returns the UTC timestamp.</summary>
     public DateTime Append(string alertId, string payload)
     {
         var timestamp = DateTime.UtcNow;
         _entries.Enqueue(new AuditLogEntry(alertId, payload, timestamp));
         Count++;
+
+        // Serilog file sink is thread-safe — no lock needed
+        logger.LogInformation("AUDIT | AlertId={AlertId} | Payload={Payload}", alertId, payload);
+
         return timestamp;
     }
 
