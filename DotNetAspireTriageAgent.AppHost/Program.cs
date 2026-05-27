@@ -29,9 +29,9 @@ var qdrantDefaultEndpoint = builder.Configuration["Qdrant:DefaultEndpoint"] ?? "
 var qdrantCollection      = builder.Configuration["Qdrant:CollectionName"]  ?? "runbooks";
 var qdrantTopK            = builder.Configuration["Qdrant:TopK"]            ?? "3";
 
-// PagerDuty — McpToolServer only
-var pagerDutyEndpoint = builder.Configuration["PagerDuty:StubEndpoint"]
-    ?? "http://localhost:9999/pagerduty-stub/incidents";
+// PagerDuty stub — registered as an Aspire project so the port is allocated dynamically.
+// The explicit config value is kept as a fallback for running McpToolServer standalone.
+var pagerDutyStub = builder.AddProject<Projects.DotNetAspireTriageAgent_PagerDutyStub>("pagerduty-stub");
 
 // MCP client — AgentService only
 var mcpClientDefaultUrl     = builder.Configuration["McpClient:DefaultUrl"]      ?? "http://localhost:5100";
@@ -41,9 +41,15 @@ var mcpClientTimeoutSeconds = builder.Configuration["McpClient:TimeoutSeconds"] 
 var triageSeverities = builder.Configuration["Triage:RunbookLookupSeverities"] ?? "Critical,High";
 
 // ── MCP Tool Server ───────────────────────────────────────────────────────────
+// Build the PagerDuty stub URL from the Aspire-allocated endpoint so McpToolServer
+// always gets the correct live address regardless of which port Aspire assigns.
+var pagerDutyStubEndpoint = pagerDutyStub.GetEndpoint("http");
+
 var mcpServer = builder.AddProject<Projects.DotNetAspireTriageAgent_McpToolServer>("mcp-tools")
-    .WithReference(qdrant)   // injects ConnectionStrings:vectorstore automatically
+    .WithReference(qdrant)          // injects ConnectionStrings:vectorstore automatically
+    .WithReference(pagerDutyStub)   // ensures stub is started before mcp-tools
     .WaitFor(qdrant)
+    .WaitFor(pagerDutyStub)
     // API keys
     .WithEnvironment("Groq__ApiKey",              groqApiKey)
     .WithEnvironment("Nomic__ApiKey",             nomicApiKey)
@@ -57,8 +63,9 @@ var mcpServer = builder.AddProject<Projects.DotNetAspireTriageAgent_McpToolServe
     .WithEnvironment("Qdrant__DefaultEndpoint",   qdrantDefaultEndpoint)
     .WithEnvironment("Qdrant__CollectionName",    qdrantCollection)
     .WithEnvironment("Qdrant__TopK",              qdrantTopK)
-    // PagerDuty stub
-    .WithEnvironment("PagerDuty__StubEndpoint",   pagerDutyEndpoint);
+    // PagerDuty stub — Aspire-allocated URL + fixed path
+    .WithEnvironment("PagerDuty__StubEndpoint",
+        ReferenceExpression.Create($"{pagerDutyStubEndpoint}/pagerduty-stub/incidents"));
 
 // ── Agent Service ─────────────────────────────────────────────────────────────
 builder.AddProject<Projects.DotNetAspireTriageAgent_AgentService>("agent-service")

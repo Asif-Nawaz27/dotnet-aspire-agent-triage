@@ -28,6 +28,7 @@
   <ItemGroup>
     <ProjectReference Include="..\DotNetAspireTriageAgent.AgentService\DotNetAspireTriageAgent.AgentService.csproj" />
     <ProjectReference Include="..\DotNetAspireTriageAgent.McpToolServer\DotNetAspireTriageAgent.McpToolServer.csproj" />
+    <ProjectReference Include="..\DotNetAspireTriageAgent.PagerDutyStub\DotNetAspireTriageAgent.PagerDutyStub.csproj" />
   </ItemGroup>
 
 </Project>
