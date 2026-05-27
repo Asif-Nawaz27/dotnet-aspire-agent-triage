@@ -17,6 +17,10 @@
     <!-- Aspire service discovery -->
     <PackageReference Include="Microsoft.Extensions.ServiceDiscovery" Version="9.7.0" />
     <PackageReference Include="ModelContextProtocol.Core" Version="1.3.0" />
+    <!-- Serilog — file + console structured logging -->
+    <PackageReference Include="Serilog.Extensions.Hosting" Version="8.0.0" />
+    <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="5.0.0" />
   </ItemGroup>
 
   <ItemGroup>

@@ -18,7 +18,7 @@ var nomicApiKey = builder.AddParameter("NomicApiKey", secret: true);
 
 // Groq — shared by both services
 var groqEndpoint = builder.Configuration["Groq:Endpoint"] ?? "https://api.groq.com/openai/v1";
-var groqModel    = builder.Configuration["Groq:Model"]    ?? "llama-3.2-3b-preview";
+var groqModel    = builder.Configuration["Groq:Model"]    ?? "llama-3.3-70b-versatile";
 
 // Nomic AI — McpToolServer only
 var nomicEndpoint = builder.Configuration["Nomic:Endpoint"] ?? "https://api-atlas.nomic.ai/v1";

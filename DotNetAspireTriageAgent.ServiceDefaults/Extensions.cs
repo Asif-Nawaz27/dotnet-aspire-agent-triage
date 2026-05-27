@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;
 using OpenTelemetry;
+using OpenTelemetry.Exporter;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
 
@@ -62,9 +63,15 @@ public static class Extensions
 
     private static IHostApplicationBuilder AddOpenTelemetryExporters(this IHostApplicationBuilder builder)
     {
-        if (!string.IsNullOrWhiteSpace(builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]))
+        var otlpEndpoint = builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"];
+        if (!string.IsNullOrWhiteSpace(otlpEndpoint))
         {
-            builder.Services.AddOpenTelemetry().UseOtlpExporter();
+            // Explicitly use gRPC protocol.
+            // UseOtlpExporter() with no args defaults to http/protobuf in SDK 1.11+,
+            // but Aspire injects OTEL_EXPORTER_OTLP_ENDPOINT pointing to the gRPC port (18889).
+            // Sending http/protobuf frames to the gRPC listener causes InvalidProtocolBufferException.
+            builder.Services.AddOpenTelemetry()
+                .UseOtlpExporter(OtlpExportProtocol.Grpc, new Uri(otlpEndpoint));
         }
 
         return builder;
