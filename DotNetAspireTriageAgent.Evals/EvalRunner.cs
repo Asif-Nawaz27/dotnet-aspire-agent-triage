@@ -2,36 +2,16 @@
 // CS8803 rule: top-level executable statements must come BEFORE namespace/type declarations.
 // All record types are declared at the end of this file.
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;   // SerilogLoggingExtensions (ServiceDefaults)
 using Serilog;
-using Serilog.Events;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-// ── Serilog setup (plain console app — no generic host) ──────────────────────
-// Log path: <SolutionRoot>\Logs\Evals\evals-YYYYMMDD.log
-// AppContext.BaseDirectory = <proj>\bin\Debug\net10.0\  → 4 levels up = solution root
-var evalsLogPath = Path.GetFullPath(
-    Path.Combine(AppContext.BaseDirectory,
-        "../../../../Logs/Evals/evals-.log"));
-
-Log.Logger = new LoggerConfiguration()
-    .MinimumLevel.Debug()
-    .MinimumLevel.Override("System.Net.Http",      LogEventLevel.Warning)
-    .MinimumLevel.Override("Microsoft.Extensions", LogEventLevel.Warning)
-    .Enrich.FromLogContext()
-    .WriteTo.Console(
-        outputTemplate:            "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}",
-        restrictedToMinimumLevel:  LogEventLevel.Information)
-    .WriteTo.File(
-        evalsLogPath,
-        rollingInterval:        RollingInterval.Day,
-        outputTemplate:         "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj}{NewLine}{Exception}",
-        retainedFileCountLimit: 14,
-        fileSizeLimitBytes:     10_000_000,
-        rollOnFileSizeLimit:    true,
-        shared:                 false)
-    .CreateLogger();
+// ── Serilog setup — delegated to ServiceDefaults/LoggingExtensions.cs ─────────
+// CreateStandaloneLogger handles the full configuration (path, sinks, levels, rolling).
+Log.Logger = SerilogLoggingExtensions.CreateStandaloneLogger("Evals");
+var evalsLogPath = SerilogLoggingExtensions.GetLogFilePath("Evals");
 
 try
 {

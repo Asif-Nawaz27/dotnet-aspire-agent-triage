@@ -15,6 +15,10 @@
     <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.11.0" />
     <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="1.11.0" />
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.11.0" />
+    <!-- Serilog — centralised logging for all services and the eval harness -->
+    <PackageReference Include="Serilog.Extensions.Hosting" Version="8.0.0" />
+    <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="5.0.0" />
   </ItemGroup>
 
 </Project>

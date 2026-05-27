@@ -1,63 +1,37 @@
 // DotNetAspireTriageAgent.McpToolServer/Program.cs
 // All configuration is injected by AppHost/appsettings.json via WithEnvironment().
-// No hardcoded fallback values — every setting must be present at startup.
+// Serilog is configured centrally via ServiceDefaults/LoggingExtensions.cs.
 using DotNetAspireTriageAgent.McpToolServer;
 using DotNetAspireTriageAgent.McpToolServer.Tools;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Hosting;
 using OpenAI;
 using Qdrant.Client;
 using Serilog;
-using Serilog.Events;
 using System.ClientModel;
 
-// ── Serilog bootstrap logger ──────────────────────────────────────────────────
-// Captures log output that occurs before the host/DI is fully constructed.
-Log.Logger = new LoggerConfiguration()
-    .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
-    .Enrich.FromLogContext()
-    .WriteTo.Console(outputTemplate:
-        "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
-    .CreateBootstrapLogger();
+// ── Bootstrap logger (captures crashes before the host is built) ──────────────
+SerilogLoggingExtensions.ConfigureBootstrapLogger();
 
 try
 {
     var builder = WebApplication.CreateBuilder(args);
     builder.AddServiceDefaults();
 
-    // ── Serilog full logger ───────────────────────────────────────────────────────
-    // Log path: <SolutionRoot>\Logs\McpToolServer\mcptoolserver-YYYYMMDD.log
-    // AppContext.BaseDirectory = <proj>\bin\Debug\net10.0\  → 4 levels up = solution root
-    var mcpLogPath = Path.GetFullPath(
-        Path.Combine(AppContext.BaseDirectory,
-            "../../../../Logs/McpToolServer/mcptoolserver-.log"));
+    // ── Serilog full logger — wired via ServiceDefaults/LoggingExtensions.cs ─────
+    builder.Host.UseSerilogLogging("McpToolServer");
 
-    builder.Host.UseSerilog((ctx, services, cfg) => cfg
-        .Enrich.FromLogContext()
-        .MinimumLevel.Override("Microsoft",                  LogEventLevel.Warning)
-        .MinimumLevel.Override("Microsoft.Hosting.Lifetime", LogEventLevel.Information)
-        .MinimumLevel.Override("Grpc",                       LogEventLevel.Warning)
-        .WriteTo.Console(
-            outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {SourceContext}{NewLine}  {Message:lj}{NewLine}{Exception}")
-        .WriteTo.File(
-            mcpLogPath,
-            rollingInterval:        RollingInterval.Day,
-            outputTemplate:         "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {SourceContext} {Message:lj}{NewLine}{Exception}",
-            retainedFileCountLimit: 14,
-            fileSizeLimitBytes:     50_000_000,
-            rollOnFileSizeLimit:    true,
-            shared:                 false));
-
-    var cfg2 = builder.Configuration;
+    var cfg = builder.Configuration;
 
     // ── Groq (injected by AppHost: Groq__ApiKey, Groq__Endpoint, Groq__Model) ─────
-    var groqApiKey   = cfg2["Groq:ApiKey"]   ?? throw new InvalidOperationException("Groq:ApiKey is missing. Ensure Parameters:GroqApiKey is set in AppHost/appsettings.json.");
-    var groqEndpoint = cfg2["Groq:Endpoint"] ?? throw new InvalidOperationException("Groq:Endpoint is missing. Ensure Groq:Endpoint is set in AppHost/appsettings.json.");
-    var groqModel    = cfg2["Groq:Model"]    ?? throw new InvalidOperationException("Groq:Model is missing. Ensure Groq:Model is set in AppHost/appsettings.json.");
+    var groqApiKey   = cfg["Groq:ApiKey"]   ?? throw new InvalidOperationException("Groq:ApiKey is missing. Ensure Parameters:GroqApiKey is set in AppHost/appsettings.json.");
+    var groqEndpoint = cfg["Groq:Endpoint"] ?? throw new InvalidOperationException("Groq:Endpoint is missing. Ensure Groq:Endpoint is set in AppHost/appsettings.json.");
+    var groqModel    = cfg["Groq:Model"]    ?? throw new InvalidOperationException("Groq:Model is missing. Ensure Groq:Model is set in AppHost/appsettings.json.");
 
     // ── Nomic AI (injected by AppHost: Nomic__ApiKey, Nomic__Endpoint, Nomic__Model)
-    var nomicApiKey   = cfg2["Nomic:ApiKey"]   ?? throw new InvalidOperationException("Nomic:ApiKey is missing. Ensure Parameters:NomicApiKey is set in AppHost/appsettings.json.");
-    var nomicEndpoint = cfg2["Nomic:Endpoint"] ?? throw new InvalidOperationException("Nomic:Endpoint is missing. Ensure Nomic:Endpoint is set in AppHost/appsettings.json.");
-    var nomicModel    = cfg2["Nomic:Model"]    ?? throw new InvalidOperationException("Nomic:Model is missing. Ensure Nomic:Model is set in AppHost/appsettings.json.");
+    var nomicApiKey   = cfg["Nomic:ApiKey"]   ?? throw new InvalidOperationException("Nomic:ApiKey is missing. Ensure Parameters:NomicApiKey is set in AppHost/appsettings.json.");
+    var nomicEndpoint = cfg["Nomic:Endpoint"] ?? throw new InvalidOperationException("Nomic:Endpoint is missing. Ensure Nomic:Endpoint is set in AppHost/appsettings.json.");
+    var nomicModel    = cfg["Nomic:Model"]    ?? throw new InvalidOperationException("Nomic:Model is missing. Ensure Nomic:Model is set in AppHost/appsettings.json.");
 
     // ── Qdrant (ConnectionStrings:vectorstore injected by Aspire .WithReference(qdrant);
     //           Qdrant:DefaultEndpoint injected by AppHost as Qdrant__DefaultEndpoint)
@@ -68,7 +42,6 @@ try
         string? endpoint = null;
         string? apiKey   = null;
 
-        // Segment-based parse handles both "Endpoint=...;Key=..." and plain URI
         foreach (var segment in raw.Split(';', StringSplitOptions.RemoveEmptyEntries))
         {
             var kv = segment.Split('=', 2);
@@ -81,18 +54,20 @@ try
             }
         }
 
-        var uri  = new Uri(endpoint ?? raw);
+        var uri = new Uri(endpoint ?? raw);
         return (uri.Host, uri.Port < 0 ? 6334 : uri.Port, uri.Scheme == "https", apiKey);
     }
 
-    var qdrantRaw = cfg2["ConnectionStrings:vectorstore"]
-        ?? cfg2["Qdrant:DefaultEndpoint"]
+    var qdrantRaw = cfg["ConnectionStrings:vectorstore"]
+        ?? cfg["Qdrant:DefaultEndpoint"]
         ?? throw new InvalidOperationException("Qdrant endpoint is missing. Ensure Qdrant:DefaultEndpoint is set in AppHost/appsettings.json.");
 
     var (qdrantHost, qdrantPort, qdrantHttps, qdrantApiKey) = ParseQdrantConnectionString(qdrantRaw);
 
-    Log.Information("McpToolServer starting — model={Model} qdrant={Host}:{Port} hasApiKey={HasKey} logPath={LogPath}",
-        groqModel, qdrantHost, qdrantPort, qdrantApiKey is not null, mcpLogPath);
+    Log.Information(
+        "McpToolServer starting — model={Model} qdrant={Host}:{Port} hasApiKey={HasKey} logFile={LogFile}",
+        groqModel, qdrantHost, qdrantPort, qdrantApiKey is not null,
+        SerilogLoggingExtensions.GetLogFilePath("McpToolServer"));
 
     // ── Groq chat client ──────────────────────────────────────────────────────────
     var groqClient = new OpenAIClient(

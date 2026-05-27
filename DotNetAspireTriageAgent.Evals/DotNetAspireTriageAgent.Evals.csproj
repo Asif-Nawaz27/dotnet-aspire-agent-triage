@@ -11,10 +11,12 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.0" />
-    <!-- Serilog — file + console structured logging (no hosting, plain console app) -->
-    <PackageReference Include="Serilog" Version="4.2.0" />
-    <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
-    <PackageReference Include="Serilog.Sinks.Console" Version="5.0.0" />
+    <!-- Serilog flows transitively from ServiceDefaults — no direct package reference needed. -->
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- ServiceDefaults provides LoggingExtensions (centralised Serilog) -->
+    <ProjectReference Include="..\DotNetAspireTriageAgent.ServiceDefaults\DotNetAspireTriageAgent.ServiceDefaults.csproj" />
   </ItemGroup>
 
   <ItemGroup>
