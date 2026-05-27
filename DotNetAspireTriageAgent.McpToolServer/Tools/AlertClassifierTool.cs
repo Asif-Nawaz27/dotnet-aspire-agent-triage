@@ -17,23 +17,10 @@ public sealed class AlertClassifierTool(IChatClient chatClient, ILogger<AlertCla
     private static readonly ActivitySource ActivitySource = new("DotNetAspireTriageAgent.McpToolServer");
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    // Microsoft.Extensions.AI 9.7.0: ForJsonSchema only accepts (JsonElement, string, string).
-    // The ForJsonSchema(Type, JsonSerializerOptions, ...) overload does not exist until 10.5.2+.
-    private static readonly JsonElement ClassificationSchema = JsonDocument.Parse("""
-        {
-          "type": "object",
-          "properties": {
-            "severity":   { "type": "string" },
-            "category":   { "type": "string" },
-            "confidence": { "type": "number" }
-          },
-          "required": ["severity", "category", "confidence"]
-        }
-        """).RootElement.Clone();
-
     /// <summary>
     /// Classifies a raw alert payload and returns severity, category, and confidence as JSON.
-    /// Uses structured output (ResponseFormat with JSON schema) — no free-text parsing needed.
+    /// Uses json_object response mode — supported by all Groq models.
+    /// The system prompt enforces the exact JSON shape; ParseJson on the caller side handles any prose.
     /// </summary>
     [McpServerTool]
     [Description("Classifies a raw alert payload into severity (Critical|High|Medium|Low), category, and confidence score. Returns AlertClassification JSON.")]
@@ -50,22 +37,21 @@ public sealed class AlertClassifierTool(IChatClient chatClient, ILogger<AlertCla
             {
                 new(ChatRole.System,
                     """
-                    You are an SRE alert classifier. Analyse the alert and respond ONLY with valid JSON.
-                    Severity must be one of: Critical, High, Medium, Low.
-                    Category must be a concise noun phrase (e.g. "cpu_spike", "memory_oom", "disk_io").
-                    Confidence must be between 0.0 and 1.0.
-                    JSON format: {"severity":"...","category":"...","confidence":0.0}
+                    You are an SRE alert classifier. Analyse the alert and respond ONLY with valid JSON — no prose, no markdown.
+                    Severity must be exactly one of: Critical, High, Medium, Low.
+                    Category must be a concise snake_case noun phrase (e.g. "cpu_spike", "memory_oom", "disk_io").
+                    Confidence must be a decimal between 0.0 and 1.0.
+                    Output format (no other text): {"severity":"...","category":"...","confidence":0.0}
                     """),
                 new(ChatRole.User, alertPayload)
             };
 
-            // Microsoft.Extensions.AI 9.7: ForJsonSchema(JsonElement schema, string schemaName, string schemaDescription)
+            // ChatResponseFormat.Json → response_format:{type:"json_object"} — supported by all Groq models.
+            // ForJsonSchema (json_schema strict mode) is NOT supported by llama models on Groq
+            // even though the docs list them; Groq rejects it with HTTP 400 invalid_request_error.
             var options = new ChatOptions
             {
-                ResponseFormat = ChatResponseFormat.ForJsonSchema(
-                    ClassificationSchema,
-                    "AlertClassification",
-                    "Alert severity classification result")
+                ResponseFormat = ChatResponseFormat.Json
             };
 
             // Microsoft.Extensions.AI 9.7: GetResponseAsync replaces CompleteAsync

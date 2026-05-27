@@ -61,25 +61,38 @@ try
 
     // ── Qdrant (ConnectionStrings:vectorstore injected by Aspire .WithReference(qdrant);
     //           Qdrant:DefaultEndpoint injected by AppHost as Qdrant__DefaultEndpoint)
-    // Aspire injects the Qdrant connection string as "Endpoint=http://host:port" — extract the URI.
-    static string ExtractQdrantUri(string raw)
+    // Aspire connection string format: "Endpoint=http://host:port;Key=<api-key>"
+    // The Key is the generated API key — must be forwarded to QdrantClient or it returns 401.
+    static (string Host, int Port, bool Https, string? ApiKey) ParseQdrantConnectionString(string raw)
     {
-        foreach (var part in raw.Split(';'))
+        string? endpoint = null;
+        string? apiKey   = null;
+
+        // Segment-based parse handles both "Endpoint=...;Key=..." and plain URI
+        foreach (var segment in raw.Split(';', StringSplitOptions.RemoveEmptyEntries))
         {
-            var kv = part.Split('=', 2);
-            if (kv.Length == 2 && kv[0].Trim().Equals("Endpoint", StringComparison.OrdinalIgnoreCase))
-                return kv[1].Trim();
+            var kv = segment.Split('=', 2);
+            if (kv.Length == 2)
+            {
+                if (kv[0].Trim().Equals("Endpoint", StringComparison.OrdinalIgnoreCase))
+                    endpoint = kv[1].Trim();
+                else if (kv[0].Trim().Equals("Key", StringComparison.OrdinalIgnoreCase))
+                    apiKey = kv[1].Trim();
+            }
         }
-        return raw; // already a plain URI
+
+        var uri  = new Uri(endpoint ?? raw);
+        return (uri.Host, uri.Port < 0 ? 6334 : uri.Port, uri.Scheme == "https", apiKey);
     }
 
     var qdrantRaw = cfg2["ConnectionStrings:vectorstore"]
         ?? cfg2["Qdrant:DefaultEndpoint"]
         ?? throw new InvalidOperationException("Qdrant endpoint is missing. Ensure Qdrant:DefaultEndpoint is set in AppHost/appsettings.json.");
-    var qdrantEndpoint = ExtractQdrantUri(qdrantRaw);
 
-    Log.Information("McpToolServer starting — model={Model} qdrant={Qdrant} logPath={LogPath}",
-        groqModel, qdrantEndpoint, mcpLogPath);
+    var (qdrantHost, qdrantPort, qdrantHttps, qdrantApiKey) = ParseQdrantConnectionString(qdrantRaw);
+
+    Log.Information("McpToolServer starting — model={Model} qdrant={Host}:{Port} hasApiKey={HasKey} logPath={LogPath}",
+        groqModel, qdrantHost, qdrantPort, qdrantApiKey is not null, mcpLogPath);
 
     // ── Groq chat client ──────────────────────────────────────────────────────────
     var groqClient = new OpenAIClient(
@@ -98,7 +111,9 @@ try
         nomicClient.GetEmbeddingClient(nomicModel).AsIEmbeddingGenerator());
 
     // ── Qdrant ────────────────────────────────────────────────────────────────────
-    builder.Services.AddSingleton(_ => new QdrantClient(new Uri(qdrantEndpoint)));
+    // Pass the Aspire-generated API key so Qdrant accepts the connection.
+    builder.Services.AddSingleton(_ =>
+        new QdrantClient(qdrantHost, qdrantPort, qdrantHttps, apiKey: qdrantApiKey));
 
     // ── Shared audit log singleton ────────────────────────────────────────────────
     builder.Services.AddSingleton<AuditLog>();
