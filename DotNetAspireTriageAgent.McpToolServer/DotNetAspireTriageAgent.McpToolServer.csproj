@@ -17,7 +17,7 @@
     <!-- Qdrant .NET SDK -->
     <PackageReference Include="Qdrant.Client" Version="1.12.0" />
     <!-- Aspire service defaults + service discovery -->
-    <PackageReference Include="Microsoft.Extensions.ServiceDiscovery" Version="9.3.0" />
+    <PackageReference Include="Microsoft.Extensions.ServiceDiscovery" Version="9.7.0" />
   </ItemGroup>
 
   <ItemGroup>

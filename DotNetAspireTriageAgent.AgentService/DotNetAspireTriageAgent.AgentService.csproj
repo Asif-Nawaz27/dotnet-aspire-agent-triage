@@ -15,7 +15,7 @@
     <!-- MCP C# SDK — client-side for importing tools into SK -->
     <PackageReference Include="ModelContextProtocol" Version="1.3.0" />
     <!-- Aspire service discovery -->
-    <PackageReference Include="Microsoft.Extensions.ServiceDiscovery" Version="9.3.0" />
+    <PackageReference Include="Microsoft.Extensions.ServiceDiscovery" Version="9.7.0" />
     <PackageReference Include="ModelContextProtocol.Core" Version="1.3.0" />
   </ItemGroup>
 

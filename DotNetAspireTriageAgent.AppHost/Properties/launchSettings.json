@@ -5,21 +5,13 @@
       "commandName": "Project",
       "dotnetRunMessages": true,
       "launchBrowser": true,
+      "applicationUrl": "http://localhost:15888",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
         "DOTNET_ENVIRONMENT": "Development",
-
-        // ── Aspire Dashboard configuration ──────────────────────────────────
-        // Aspire reads these three keys directly from IConfiguration (env vars).
-        // ASPNETCORE_URLS      → URL the dashboard web UI will listen on
-        // OTLP_ENDPOINT_URL    → gRPC endpoint the dashboard receives traces on
-        // OTLP_HTTP_ENDPOINT_URL → HTTP/Protobuf endpoint for traces
-        "ASPNETCORE_URLS": "http://localhost:15888",
+        "ASPIRE_ALLOW_UNSECURED_TRANSPORT": "true",
         "ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL": "http://localhost:18889",
-        "ASPIRE_DASHBOARD_OTLP_HTTP_ENDPOINT_URL": "http://localhost:18890",
-
-        // Required when using http:// (not https://) for the endpoints above
-        "ASPIRE_ALLOW_UNSECURED_TRANSPORT": "true"
+        "ASPIRE_DASHBOARD_OTLP_HTTP_ENDPOINT_URL": "http://localhost:18890"
       }
     }
   }
