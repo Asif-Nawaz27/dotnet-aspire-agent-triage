@@ -56,7 +56,7 @@ public sealed class PagerDutyTool(
                 ?? "http://localhost:9999/pagerduty-stub/incidents";
 
             var client = httpClientFactory.CreateClient("pagerduty");
-            var ticketId = $"INC-{Guid.NewGuid():N[..8]}";
+            var ticketId = "INC-" + Guid.NewGuid().ToString("N")[..8];
 
             var payload = new
             {

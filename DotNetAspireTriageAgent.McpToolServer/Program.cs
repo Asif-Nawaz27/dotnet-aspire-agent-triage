@@ -78,12 +78,20 @@ try
         groqClient.GetChatClient(groqModel).AsIChatClient());
 
     // ── Nomic AI embedding client ─────────────────────────────────────────────────
-    var nomicClient = new OpenAIClient(
-        new ApiKeyCredential(nomicApiKey),
-        new OpenAIClientOptions { Endpoint = new Uri(nomicEndpoint) });
+    // Nomic's native endpoint is POST /v1/embedding/text — the OpenAI SDK calls
+    // /v1/embeddings and gets HTTP 404.  We use a custom IEmbeddingGenerator instead.
+    builder.Services.AddHttpClient("nomic", c =>
+    {
+        // Base address ends with /v1/ so relative requests resolve to /v1/embedding/text
+        c.BaseAddress = new Uri(nomicEndpoint.TrimEnd('/') + "/");
+        c.DefaultRequestHeaders.Add("Authorization", $"Bearer {nomicApiKey}");
+    });
 
-    builder.Services.AddEmbeddingGenerator<string, Embedding<float>>(
-        nomicClient.GetEmbeddingClient(nomicModel).AsIEmbeddingGenerator());
+    builder.Services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(sp =>
+        new NomicEmbeddingGenerator(
+            sp.GetRequiredService<IHttpClientFactory>(),
+            nomicModel,
+            sp.GetRequiredService<ILogger<NomicEmbeddingGenerator>>()));
 
     // ── Qdrant ────────────────────────────────────────────────────────────────────
     // Pass the Aspire-generated API key so Qdrant accepts the connection.

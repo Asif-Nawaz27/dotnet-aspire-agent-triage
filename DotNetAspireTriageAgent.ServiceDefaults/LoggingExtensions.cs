@@ -1,25 +1,3 @@
-// DotNetAspireTriageAgent.ServiceDefaults/LoggingExtensions.cs
-// Single source-of-truth for Serilog configuration across the whole solution.
-//
-// Usage
-// ─────
-//  Web / hosted services (AgentService, McpToolServer)
-//      // 1. Before CreateBuilder — catches startup crashes:
-//      SerilogLoggingExtensions.ConfigureBootstrapLogger();
-//      try {
-//          var builder = WebApplication.CreateBuilder(args);
-//          // 2. Full logger wired into the host DI pipeline:
-//          builder.Host.UseSerilogLogging("AgentService");
-//          ...
-//      } catch (Exception ex) when (ex is not HostAbortedException) {
-//          Log.Fatal(ex, "...");  throw;
-//      } finally { await Log.CloseAndFlushAsync(); }
-//
-//  Plain console apps (Evals — no generic host)
-//      Log.Logger = SerilogLoggingExtensions.CreateStandaloneLogger("Evals");
-//      try { ... }
-//      finally { await Log.CloseAndFlushAsync(); }
-
 using Serilog;
 using Serilog.Events;
 
