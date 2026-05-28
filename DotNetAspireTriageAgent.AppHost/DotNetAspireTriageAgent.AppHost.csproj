@@ -9,6 +9,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <IsAspireHost>true</IsAspireHost>
     <UserSecretsId>incident-triage-apphost</UserSecretsId>
+    <!-- Controls the title shown in the Aspire dashboard header.
+         The dashboard reads Assembly.GetEntryAssembly().GetName().Name directly.
+         IHostEnvironment / env-var overrides (DOTNET_APPLICATIONNAME etc.) do NOT
+         affect the dashboard title and can break DCP resource discovery. -->
+    <AssemblyName>DotNet Aspire Incident Triage Agent</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup>
